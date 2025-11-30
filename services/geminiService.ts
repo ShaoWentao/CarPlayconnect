@@ -1,4 +1,4 @@
-import { GoogleGenAI } from "@google/genai";
+import { GoogleGenerativeAI } from "@google/generative-ai";
 import { GeoLocation } from "../types";
 
 let client: GoogleGenAI | null = null;
