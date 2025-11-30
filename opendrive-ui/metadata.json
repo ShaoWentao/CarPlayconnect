@@ -1,8 +1,0 @@
-{
-  "name": "OpenDrive UI",
-  "description": "A CarPlay-inspired web dashboard for Android head units featuring Gemini-powered voice assistance, maps grounding, and media controls.",
-  "requestFramePermissions": [
-    "microphone",
-    "geolocation"
-  ]
-}
