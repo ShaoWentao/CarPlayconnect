@@ -1,64 +1,79 @@
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import { GoogleGenerativeAI, GenerativeModel } from "@google/generative-ai";
 import { GeoLocation } from "../types";
 
-let client: GoogleGenAI | null = null;
+let client: GoogleGenerativeAI | null = null;
+let model: GenerativeModel | null = null;
 
 export const initializeGemini = () => {
-  if (process.env.API_KEY) {
-    client = new GoogleGenAI({ apiKey: process.env.API_KEY });
-  }
+  const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
+  if (!apiKey) return;
+
+  client = new GoogleGenerativeAI(apiKey);
+
+  model = client.getGenerativeModel({
+    model: "gemini-2.5-flash",
+    tools: [{ google_maps: {} }],
+    systemInstruction:
+      "You are an intelligent car co-pilot. Keep responses short and helpful for a driver.",
+  });
 };
 
 export const generateAssistantResponse = async (
   prompt: string,
   location: GeoLocation | null
 ): Promise<string> => {
-  if (!client) {
+  if (!client || !model) {
     initializeGemini();
-    if (!client) return "Error: API Key missing.";
+    if (!client || !model) return "Error: API Key missing.";
   }
 
   try {
-    const config: any = {
-      tools: [{ googleMaps: {} }],
-      systemInstruction: "You are an intelligent car co-pilot. Keep responses short, concise, and helpful for a driver. Do not use markdown formatting extensively. Focus on driving tasks, locations, and music.",
+    // 用户输入
+    const userInput = {
+      text: prompt,
     };
 
-    if (location) {
-      config.toolConfig = {
-        retrievalConfig: {
-          latLng: {
-            latitude: location.latitude,
-            longitude: location.longitude,
+    // 可选定位信息
+    const toolConfig = location
+      ? {
+          google_maps: {
+            location: {
+              lat: location.latitude,
+              lng: location.longitude,
+            },
           },
-        },
-      };
-    }
+        }
+      : undefined;
 
-    const response = await client!.models.generateContent({
-      model: "gemini-2.5-flash",
-      contents: prompt,
-      config: config,
+    const result = await model.generateContent({
+      contents: [
+        {
+          role: "user",
+          parts: [userInput],
+        },
+      ],
+      toolConfig,
     });
 
-    // Check for grounding chunks (Map results)
-    const groundingChunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks;
+    const responseText =
+      result.response.text() ||
+      "I'm not sure how to help with that while driving.";
+
+    // 处理地图结果（grounding chunks）
     let mapInfo = "";
-    
-    if (groundingChunks) {
-      // Very basic extraction of found places to append to the text response
-      const places = groundingChunks
-        .filter((c: any) => c.maps?.title)
-        .map((c: any) => c.maps.title)
-        .join(", ");
-      
-      if (places) {
-        mapInfo = `\n\nFound nearby: ${places}`;
-      }
+    const chunks =
+      result.response.candidates?.[0]?.groundingMetadata?.groundingChunks || [];
+
+    const places = chunks
+      .filter((c: any) => c.maps?.title)
+      .map((c: any) => c.maps.title)
+      .join(", ");
+
+    if (places) {
+      mapInfo = `\n\nFound nearby: ${places}`;
     }
 
-    return (response.text || "I'm not sure how to help with that while driving.") + mapInfo;
-
+    return responseText + mapInfo;
   } catch (error) {
     console.error("Gemini Error:", error);
     return "Sorry, I lost connection to the cloud.";
